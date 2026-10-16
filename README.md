@@ -1,50 +1,51 @@
-![ic_home_background.webp](ic_home_background.webp)
+# StatusBarLyric
 
-<div align="center">
+![StatusBarLyric banner](ic_home_background.webp)
 
-![Release Download](https://img.shields.io/github/downloads/577fkj/StatusBarLyric/total?style=flat-square)
-![Release Download](https://img.shields.io/github/downloads/Xposed-Modules-Repo/statusbar.lyric/total?style=flat-square)
-[![Release Version](https://img.shields.io/github/v/release/577fkj/StatusBarLyric?style=flat-square)](https://github.com/577fkj/StatusBarLyric/releases/latest)  
-[![GitHub Star](https://img.shields.io/github/stars/577fkj/StatusBarLyric?style=flat-square)](https://github.com/577fkj/StatusBarLyric/stargazers)
-[![GitHub Fork](https://img.shields.io/github/forks/577fkj/StatusBarLyric?style=flat-square)](https://github.com/577fkj/StatusBarLyric/network/members)
-![GitHub Repo size](https://img.shields.io/github/repo-size/577fkj/StatusBarLyric?style=flat-square&color=3cb371)
-[![GitHub license](https://img.shields.io/github/license/577fkj/StatusBarLyric?style=flat-square)](LICENSE)
-[![GitHub Repo Languages](https://img.shields.io/github/languages/top/577fkj/StatusBarLyric?style=flat-square)](https://github.com/577fkj/StatusBarLyric/search?l=java)  
-[![Build Status](https://img.shields.io/endpoint.svg?url=https%3A%2F%2Factions-badge.atrox.dev%2F577fkj%2FStatusBarLyric%2Fbadge%3Fref%3Dmain&style=flat)](https://actions-badge.atrox.dev/577fkj/StatusBarLyric/goto?ref=main)
-[![Telegram](https://img.shields.io/badge/电报群-StatusBatLyric-blue.svg?style=flat-square&color=12b7f5)](https://t.me/StatusBatLyric)
+StatusBarLyric is an Xposed module that displays timed lyrics in the Android status bar. It supports configurable lyric and icon styling, anchor selection, and additional SystemUI behavior.
 
-</div>
+This repository is a community-maintained fork of [Block-Network/StatusBarLyric](https://github.com/Block-Network/StatusBarLyric). The upstream project is archived. Original notices and the GNU General Public License v3.0 are retained; see [LICENSE](LICENSE).
 
-### 这是什么软件？
+## Compatibility
 
-- 这是一个Xposed模块，仅支持LSPosed框架
-- 用于在状态栏显示歌词，支持各式各样的自定义样式
-- 理论支持 __所有__ 官方以及部分修改系统
+- Requires Android 11 (API 30) or later and an Xposed-compatible framework. The module is scoped to `com.android.systemui`; LSPosed is recommended.
+- This fork updates the SuperLyric integration to the Binder-based SuperLyric API 3.7.
+- An Android 16+ AOSP status-bar clock fallback is included for ROMs where an old saved anchor no longer matches.
+- The current compatibility baseline was built and tested with SuperLyric 4.1 on a POCO F6 (`peridot`) running Android 17 (API 37, Penguin/CLO ROM). Other devices and ROMs are not yet verified; SystemUI layouts vary between ROMs.
 
-### 下载
+## Installation
 
-- [Releases](https://github.com/577fkj/StatusBarLyric/releases)
-- [Beta](https://github.com/577fkj/StatusBarLyric/actions/workflows/Android.yml)
-- [Canary](https://github.com/577fkj/StatusBarLyric/actions/workflows/Android_Dev.yml)
+1. Install the StatusBarLyric APK and activate it in your Xposed manager, applying the module to **System UI** (`com.android.systemui`).
+2. Reboot if your Xposed framework requires it, then open StatusBarLyric and enable the master switch.
+3. On first setup, open **Hook Page**, enable **Test Mode**, and restart SystemUI. Select a suitable clock/anchor from the detected hook points.
+4. Turn Test Mode off and restart SystemUI again.
+5. If you use SuperLyric as the lyric provider, install and configure SuperLyric separately, then enable the music app you want it to monitor. Play a track with available timed lyrics.
 
----
+If lyrics do not appear, confirm that the module is active for SystemUI, that an anchor is selected, and that the lyric provider is sending data. Restart the music app and SystemUI after changing module or provider settings that request a restart.
 
-## 帮助翻译
+## Build from source
 
-[![Crowdin](https://badges.crowdin.net/statusbarlyric/localized.svg)](https://crowdin.com/project/statusbarlyric)
+### Requirements
 
----
+- JDK 21
+- Android SDK with Android SDK Platform 36 and the matching Android build tools
+- Network access for Gradle to resolve dependencies on the first build
 
-[使用教程](https://blog.xiaowine.cc/posts/8e64/)
+Set `ANDROID_HOME` or `ANDROID_SDK_ROOT` to your SDK directory, or provide `sdk.dir` in `local.properties`. Then run:
 
-[想做贡献？](doc/CONTRIBUTING.md)
+```sh
+./gradlew assembleDebug
+```
 
-[奉献者](https://github.com/Block-Network/StatusBarLyric/graphs/contributors)
+The debug APK is written under `app/build/outputs/apk/debug/`. Its filename includes the app version, build type, and build timestamp.
 
-[EULA](doc/EULA.md)
+## Project links
 
-[GNU General Public License v3.0](LICENSE)
-
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=Block-Network/StatusBarLyric&type=Date)](https://star-history.com/#Block-Network/StatusBarLyric&Date)
+- [Upstream project](https://github.com/Block-Network/StatusBarLyric)
+- [SuperLyric](https://github.com/HChenX/SuperLyric)
+- [SuperLyric API](https://github.com/HChenX/SuperLyricApi)
+- [Original usage guide](https://blog.xiaowine.cc/posts/8e64/)
+- [Contributing guide](doc/CONTRIBUTING.md)
+- [Contributor history](https://github.com/Block-Network/StatusBarLyric/graphs/contributors)
+- [EULA](doc/EULA.md)
+- [GNU General Public License v3.0](LICENSE)
