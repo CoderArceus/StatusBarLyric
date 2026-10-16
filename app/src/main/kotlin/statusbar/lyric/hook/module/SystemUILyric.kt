@@ -31,6 +31,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.res.Configuration
 import android.graphics.Color
+import android.graphics.BitmapFactory
 import android.graphics.LinearGradient
 import android.graphics.Point
 import android.graphics.PorterDuff
@@ -42,6 +43,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.Message
+import android.util.Base64
 import android.util.DisplayMetrics
 import android.util.TypedValue
 import android.view.Gravity
@@ -60,10 +62,10 @@ import com.github.kyuubiran.ezxhelper.HookFactory.`-Static`.createHook
 import com.github.kyuubiran.ezxhelper.ObjectHelper.Companion.objectHelper
 import com.github.kyuubiran.ezxhelper.finders.ConstructorFinder.`-Static`.constructorFinder
 import com.github.kyuubiran.ezxhelper.finders.MethodFinder.`-Static`.methodFinder
-import com.hchen.superlyricapi.ISuperLyric
+import com.hchen.superlyricapi.ISuperLyricReceiver
+import com.hchen.superlyricapi.SuperLyricCache
 import com.hchen.superlyricapi.SuperLyricData
-import com.hchen.superlyricapi.SuperLyricTool
-import com.hchen.superlyricapi.SuperLyricTool.base64ToBitmap
+import com.hchen.superlyricapi.SuperLyricHelper
 import statusbar.lyric.R
 import statusbar.lyric.config.XposedOwnSP.config
 import statusbar.lyric.hook.BaseHook
@@ -83,6 +85,7 @@ import statusbar.lyric.tools.Tools.getObjectField
 import statusbar.lyric.tools.Tools.getObjectFieldIfExist
 import statusbar.lyric.tools.Tools.goMainThread
 import statusbar.lyric.tools.Tools.ifNotNull
+import statusbar.lyric.tools.Tools.isAospStatusBarClock
 import statusbar.lyric.tools.Tools.isLandscape
 import statusbar.lyric.tools.Tools.isNot
 import statusbar.lyric.tools.Tools.isNotNull
@@ -126,7 +129,7 @@ class SystemUILyric : BaseHook() {
     }
     private var lastBase64Icon: String by observableChange("") { _, newValue ->
         goMainThread {
-            base64ToBitmap(newValue).isNotNull {
+            decodeBase64Icon(newValue).isNotNull {
                 iconView.showView()
                 iconView.setImageBitmap(it)
             }.isNot {
@@ -226,14 +229,24 @@ class SystemUILyric : BaseHook() {
             }
         }
 
-        loadClassOrNull(config.textViewClassName).isNotNull {
+        val configuredClockClass = config.textViewClassName
+            .takeIf { it.isNotBlank() }
+            ?.let { loadClassOrNull(it) }
+        val aospClockClass = if (Build.VERSION.SDK_INT >= 36) {
+            loadClassOrNull("com.android.systemui.statusbar.policy.Clock")
+        } else {
+            null
+        }
+
+        if (configuredClockClass != null || aospClockClass != null) {
             TextView::class.java.methodFinder().filterByName("onLayout").single()
                 .createHook {
                     after { hookParam ->
                         if (!canLoad) return@after
 
                         val view = (hookParam.thisObject as View)
-                        if (view.isTargetView()) {
+                        val isAospClock = view.isAospStatusBarClock()
+                        if ((configuredClockClass != null && view.isTargetView()) || isAospClock) {
                             clockView = view as TextView
                             targetView = (clockView.parent as LinearLayout).apply {
                                 gravity = Gravity.CENTER
@@ -248,7 +261,7 @@ class SystemUILyric : BaseHook() {
                 .createHook {
                     after { hookParam ->
                         val view = (hookParam.thisObject as View)
-                        if (view.isTargetView()) {
+                        if ((configuredClockClass != null && view.isTargetView()) || view.isAospStatusBarClock()) {
                             "Running onDetachedFromWindow".log()
                             canLoad = true
                             updateLyricState(showLyric = false, showFocus = false)
@@ -279,7 +292,7 @@ class SystemUILyric : BaseHook() {
                         }
                     }
                 }
-        }.isNot {
+        } else {
             moduleRes.getString(R.string.load_class_empty).log()
             return
         }
@@ -598,20 +611,17 @@ class SystemUILyric : BaseHook() {
     private val showTitleConsumer: Consumer<SuperLyricData> = object : Consumer<SuperLyricData> {
         override fun accept(value: SuperLyricData) {
             if (!isMusicPlaying) return
-            if (playingApp != value.packageName) return
-
-            this@SystemUILyric.title = value.title
+            this@SystemUILyric.title = value.title ?: return
         }
     }
 
     @SuppressLint("UnspecifiedRegisterReceiverFlag")
     private fun registerSuperLyric(context: Context) {
-        SuperLyricTool.registerSuperLyric(context, object : ISuperLyric.Stub() {
-            override fun onStop(data: SuperLyricData?) {
+        SuperLyricHelper.registerReceiver(object : ISuperLyricReceiver.Stub() {
+            override fun onStop(publisher: String?, data: SuperLyricData?) {
                 if (data == null) return
                 if (!isReady) return
-                if (data.playbackState?.state == PlaybackState.STATE_BUFFERING) return
-                if (playingApp.isNotEmpty() && playingApp != data.packageName) return
+                if (playingApp.isNotEmpty() && playingApp != publisher) return
 
                 lastLyric = ""
                 playingApp = ""
@@ -621,31 +631,36 @@ class SystemUILyric : BaseHook() {
                 updateLyricState(showLyric = false)
             }
 
-            override fun onSuperLyric(data: SuperLyricData?) {
-                if (data == null) return
+            override fun onLyric(publisher: String?, rawData: SuperLyricData?) {
+                if (rawData == null || publisher == null) return
                 if (!isReady) return
 
-                playingApp = data.packageName
-                if (data.isExistMediaMetadata) {
-                    if (config.titleSwitch) {
-                        if (lastArtist != data.artist || lastAlbum != data.album) {
-                            lastArtist = data.artist
-                            lastAlbum = data.album
+                val data = SuperLyricCache.resolve(rawData) ?: return
+                playingApp = publisher
+                if (config.titleSwitch && data.hasTitle()) {
+                    val artist = data.artist ?: ""
+                    val album = data.album ?: ""
+                    if (lastArtist != artist || lastAlbum != album) {
+                        lastArtist = artist
+                        lastAlbum = album
 
-                            if (lastRunnable.isNotNull()) handler.removeCallbacks(lastRunnable!!)
-                            lastRunnable = Runnable { showTitleConsumer.accept(data) }
-
-                            ("Title: " + data.title + ", Artist: " + lastArtist + ", Album: " + lastAlbum).log()
+                        if (lastRunnable.isNotNull()) handler.removeCallbacks(lastRunnable!!)
+                        lastRunnable = Runnable {
+                            if (playingApp == publisher) showTitleConsumer.accept(data)
                         }
+
+                        ("Title: " + data.title + ", Artist: " + lastArtist + ", Album: " + lastAlbum).log()
                     }
                 }
-                if (data.lyric.isEmpty()) return
+                val lyricLine = data.lyric ?: return
+                if (lyricLine.text.isNullOrEmpty()) return
                 isMusicPlaying = true
-                lastLyric = data.lyric
+                lastLyric = lyricLine.text
                 if (lastRunnable.isNotNull()) handler.postDelayed(lastRunnable!!, 800)
 
-                changeIcon(data)
-                updateLyricState(delay = data.delay)
+                changeIcon(data, publisher)
+                val delay = (lyricLine.endTime - lyricLine.startTime).coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
+                updateLyricState(delay = delay)
                 if (handler.hasMessages(timeoutRestore)) {
                     handler.removeMessages(timeoutRestore)
                     handler.sendEmptyMessageDelayed(timeoutRestore, 10000L)
@@ -737,18 +752,19 @@ class SystemUILyric : BaseHook() {
     }
 
     // 更改图标
-    private fun changeIcon(it: SuperLyricData) {
+    private fun changeIcon(it: SuperLyricData, publisher: String) {
         if (!iconSwitch) return
         if (!isMusicPlaying) return
 
         lastBase64Icon = config.changeAllIcons.ifEmpty {
-            if (it.base64Icon != "") {
-                it.base64Icon
-            } else {
-                config.getDefaultIcon(it.packageName)
-            }
+            it.base64Icon?.takeIf(String::isNotEmpty) ?: config.getDefaultIcon(publisher)
         }
     }
+
+    private fun decodeBase64Icon(value: String) = runCatching {
+        val bytes = Base64.decode(value, Base64.DEFAULT)
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+    }.getOrNull()
 
     // 适用于不考虑状态的隐藏
     private fun hideLyric() {

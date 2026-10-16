@@ -55,6 +55,9 @@ import kotlin.properties.ReadWriteProperty
 @SuppressLint("StaticFieldLeak")
 object Tools {
 
+    private const val AOSP_STATUS_BAR_CLOCK_CLASS =
+        "com.android.systemui.statusbar.policy.Clock"
+
     private var index: Int = 0
 
     val buildTime: String =
@@ -149,6 +152,25 @@ object Tools {
             }
         }
         return false
+    }
+
+    /**
+     * Android 16+ AOSP-based SystemUI keeps its status-bar clock at a stable, named
+     * location. Older module configs can retain a stale parent/id/text-size tuple
+     * after a ROM upgrade, so allow a narrowly-scoped fallback for that view.
+     */
+    fun View.isAospStatusBarClock(): Boolean {
+        if (Build.VERSION.SDK_INT < 36) return false
+        if (this !is TextView || javaClass.name != AOSP_STATUS_BAR_CLOCK_CLASS) return false
+
+        val parentView = parent as? LinearLayout ?: return false
+        val viewIdName = runCatching { resources.getResourceEntryName(id) }.getOrNull()
+        val parentIdName = runCatching {
+            parentView.resources.getResourceEntryName(parentView.id)
+        }.getOrNull()
+
+        return viewIdName == "clock" &&
+            parentIdName == "status_bar_start_side_except_heads_up"
     }
 
     private fun String.regexReplace(pattern: String, newString: String): String {
