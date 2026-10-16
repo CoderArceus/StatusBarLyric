@@ -42,7 +42,7 @@ The debug APK is written under `app/build/outputs/apk/debug/`. Its filename incl
 ## GitHub Actions
 
 - Pushes to `main` and pull requests targeting `main` build the debug APK and publish it as a downloadable workflow artifact.
-- Pushing a version tag such as `v7.2.1` builds a minified release APK and publishes a GitHub Release.
+- Pushing a version tag builds a minified release APK and publishes a GitHub Release. The tag must match `versionName` in `app/build.gradle.kts` (for example, set `versionName` to `7.2.1` and increment `versionCode` before pushing `v7.2.1`).
 
 Release publishing requires a release keystore. Add these Actions repository secrets before pushing a version tag:
 

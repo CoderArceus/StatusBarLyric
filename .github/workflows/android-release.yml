@@ -42,6 +42,17 @@ jobs:
         with:
           cache-provider: basic
 
+      - name: Check tag matches app version
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          app_version=$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n 1)
+          expected_tag="v${app_version}"
+          if [ "$RELEASE_TAG" != "$expected_tag" ]; then
+            echo "Tag '$RELEASE_TAG' does not match app version '$app_version' (expected '$expected_tag')."
+            exit 1
+          fi
+
       - name: Prepare release signing
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
