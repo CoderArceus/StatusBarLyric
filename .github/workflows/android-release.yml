@@ -1,0 +1,109 @@
+name: Android Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag to build and release
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: Build and publish signed APK
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK Platform 36
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Prepare release signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [ -z "${!name:-}" ]; then
+              echo "Missing Actions secret: ${name}"
+              echo "Add all four Android signing secrets documented in README.md before creating a release tag."
+              exit 1
+            fi
+          done
+          key_path="$RUNNER_TEMP/statusbarlyric-release.jks"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$key_path"
+          export RELEASE_KEY_PATH="$key_path"
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          def escape(value):
+              out = []
+              for index, char in enumerate(value):
+                  code = ord(char)
+                  if char == "\\":
+                      out.append("\\\\")
+                  elif char == "\t":
+                      out.append("\\t")
+                  elif char == "\n":
+                      out.append("\\n")
+                  elif char == "\r":
+                      out.append("\\r")
+                  elif char in "=:#!" or (char == " " and index == 0):
+                      out.append("\\" + char)
+                  elif code < 0x20 or code > 0x7e:
+                      out.append(f"\\u{code:04x}")
+                  else:
+                      out.append(char)
+              return "".join(out)
+
+          values = {
+              "sdk.dir": os.environ["ANDROID_HOME"],
+              "androidStoreFile": os.environ["RELEASE_KEY_PATH"],
+              "androidStorePassword": os.environ["ANDROID_KEYSTORE_PASSWORD"],
+              "androidKeyAlias": os.environ["ANDROID_KEY_ALIAS"],
+              "androidKeyPassword": os.environ["ANDROID_KEY_PASSWORD"],
+          }
+          Path("local.properties").write_text(
+              "".join(f"{key}={escape(value)}\n" for key, value in values.items()),
+              encoding="ascii",
+          )
+          PY
+
+      - name: Build signed release APK
+        run: ./gradlew --no-daemon assembleRelease
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: StatusBarLyric ${{ inputs.tag || github.ref_name }}
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          generate_release_notes: true
+          files: app/build/outputs/apk/release/*.apk

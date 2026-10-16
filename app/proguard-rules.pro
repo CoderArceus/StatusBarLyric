@@ -31,3 +31,5 @@
 -packageobfuscationdictionary proguard-dic-6.txt
 -adaptresourcefilenames proguard-dic-6.txt
 -adaptresourcefilecontents proguard-dic-6.txt
+# SuperLyricApi accesses this Android hidden API at runtime; it is not in public SDK stubs.
+-dontwarn android.os.ServiceManager

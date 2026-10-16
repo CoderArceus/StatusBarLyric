@@ -39,6 +39,20 @@ Set `ANDROID_HOME` or `ANDROID_SDK_ROOT` to your SDK directory, or provide `sdk.
 
 The debug APK is written under `app/build/outputs/apk/debug/`. Its filename includes the app version, build type, and build timestamp.
 
+## GitHub Actions
+
+- Pushes to `main` and pull requests targeting `main` build the debug APK and publish it as a downloadable workflow artifact.
+- Pushing a version tag such as `v7.2.1` builds a minified release APK and publishes a GitHub Release.
+
+Release publishing requires a release keystore. Add these Actions repository secrets before pushing a version tag:
+
+- `ANDROID_KEYSTORE_BASE64` — the keystore file encoded as Base64
+- `ANDROID_KEYSTORE_PASSWORD`
+- `ANDROID_KEY_ALIAS`
+- `ANDROID_KEY_PASSWORD`
+
+The release workflow fails with a setup message if any signing secret is missing. Keep a secure backup of the keystore: future APK updates must use the same signing key. Debug builds continue to use the standard debug key.
+
 ## Project links
 
 - [Upstream project](https://github.com/Block-Network/StatusBarLyric)

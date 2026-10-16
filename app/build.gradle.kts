@@ -39,10 +39,11 @@ android {
         }
     }
     buildTypes {
-        all {
-            signingConfig = config ?: signingConfigs["debug"]
+        debug {
+            signingConfig = signingConfigs["debug"]
         }
         release {
+            signingConfig = config
             isMinifyEnabled = true
             isShrinkResources = true
             vcsInfo.include = false
